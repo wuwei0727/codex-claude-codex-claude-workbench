@@ -1,0 +1,305 @@
+# 项目上下文：codex-claude-workbench
+
+## 1. 项目路径
+
+项目已创建在：
+
+D:\cusor-project\codex-claude-workbench
+
+当前开发服务器：
+
+http://127.0.0.1:1420/
+
+## 2. 项目目标
+
+构建一个 Windows 优先的 Codex / Claude 日常工作台。
+
+核心目标：
+
+- 管理 Codex / Claude Provider。
+- 支持官方登录配置和 API Relay 配置共存。
+- 支持一键切换 Provider。
+- 支持配置自动备份。
+- 支持 Codex 会话搜索、导出、删除。
+- 支持 MCP / Skills / Prompts 管理。
+- 将 Codex++ 注入能力作为可选独立模块，不能影响核心功能。
+- 第一版先服务个人日常使用，不追求支持 Gemini / OpenCode / 云同步 / 多语言等扩展能力。
+
+## 3. 技术栈
+
+已确定技术栈：
+
+- 框架：Tauri 2
+- 前端：React + TypeScript + Vite
+- UI：shadcn/ui 风格组件 + TailwindCSS
+- 数据请求：TanStack Query
+- 后端：Rust
+- 数据库：SQLite
+- 配置管理：TOML / JSON / SQLite
+- 安装包：Windows NSIS 或 MSI
+
+## 4. 设计原则
+
+- Windows 优先，界面走 Windows 11 / Fluent 风格。
+- 核心功能稳定优先。
+- Provider 管理、配置备份、MCP 管理等功能不能依赖注入。
+- Codex++ 注入功能必须隔离：
+  - 可开启 / 可关闭
+  - 有版本检测
+  - 有日志和诊断
+  - 失败不影响主程序
+- 不明文展示 token、Cookie、auth.json、密钥。
+- 不直接修改真实配置文件，除非先完成备份和 dry-run diff。
+- 第一版不做 Gemini / OpenCode / 复杂云同步 / 多语言完整 i18n。
+
+## 5. 已完成内容
+
+已经完成项目基础骨架：
+
+- 在 `D:\cusor-project\codex-claude-workbench` 创建项目目录。
+- 新增 `README.md`。
+- 新增项目级 `AGENTS.md`。
+- 新增 `.gitignore`。
+- 配置 `package.json`。
+- 配置 `tsconfig.json`。
+- 配置 `vite.config.ts`。
+- 配置 `tailwind.config.js`。
+- 配置 `postcss.config.js`。
+- 新增 Tauri 2 配置。
+- 新增 Windows NSIS / MSI 打包目标。
+- 新增基础 icon 文件。
+- 新增 React App 入口。
+- 新增 Dashboard 页面。
+- 新增 shadcn/ui 风格基础组件：
+  - Button
+  - Card
+  - Badge
+  - Input
+- 接入 TanStack Query。
+- 新增 Tauri invoke 封装。
+- 浏览器预览下使用 mock 数据。
+- Tauri 运行时走 Rust command。
+- Rust 后端新增服务/命令骨架。
+- SQLite 初始化已接入。
+- 默认 Provider 种子数据已接入。
+
+## 6. 当前目录结构重点
+
+```text
+D:\cusor-project\codex-claude-workbench
+  README.md
+  AGENTS.md
+  package.json
+  vite.config.ts
+  tailwind.config.js
+  postcss.config.js
+  src
+    main.tsx
+    index.css
+    app
+      app.tsx
+      dashboard.tsx
+    components
+      ui
+        badge.tsx
+        button.tsx
+        card.tsx
+        input.tsx
+    lib
+      query.ts
+      tauri.ts
+  src-tauri
+    Cargo.toml
+    tauri.conf.json
+    build.rs
+    icons
+      icon.ico
+    migrations
+      001_init.sql
+    capabilities
+      default.json
+    src
+      main.rs
+      lib.rs
+      commands
+        mod.rs
+        providers.rs
+        sessions.rs
+        status.rs
+      services
+        mod.rs
+        app_paths.rs
+        db.rs
+7. 数据库设计现状
+迁移文件：
+src-tauri/migrations/001_init.sql
+当前已建表：
+CREATE TABLE IF NOT EXISTS provider_profiles (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  base_url TEXT,
+  is_active INTEGER NOT NULL DEFAULT 0,
+  health TEXT NOT NULL DEFAULT 'unknown',
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS codex_sessions (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  project_path TEXT,
+  updated_at TEXT NOT NULL,
+  message_count INTEGER NOT NULL DEFAULT 0
+);
+默认种子数据：
+codex-official
+claude-official
+8. Rust 后端现状
+已有 command
+get_workbench_status
+list_provider_profiles
+switch_provider_profile
+list_codex_sessions
+已有服务
+services::app_paths
+services::db
+当前行为
+services::db::open_connection() 会：创建 app data 目录
+打开 SQLite
+执行 001_init.sql
+写入默认 Provider 种子数据
+
+list_provider_profiles() 从 SQLite 读取 Provider。
+switch_provider_profile(profile_id) 只切换 SQLite 中的 active 状态。
+list_codex_sessions() 从 SQLite 的 codex_sessions 读取。
+get_workbench_status() 返回路径信息：app data dir
+Codex config path
+Claude config path
+SQLite database path
+injector enabled 状态
+
+9. 前端现状
+入口：
+src/main.tsx
+src/app/app.tsx
+src/app/dashboard.tsx
+当前 Dashboard 包含：
+侧边栏
+顶部标题
+启动 Codex / Claude 按钮，占位
+Codex Provider 状态卡
+Claude Provider 状态卡
+SQLite 状态卡
+注入模块状态卡
+Provider 切换区域
+Codex 会话区域
+配置路径区域
+快速动作区域
+核心功能路线卡片
+src/lib/tauri.ts 已做环境分流：
+浏览器普通预览：mock 数据
+Tauri 运行环境：调用 Rust invoke
+10. 已运行验证
+已运行并通过：
+npm install
+npm run build
+cargo check
+已确认：
+http://127.0.0.1:1420/ 返回 200
+生产依赖审计：
+npm audit --omit=dev
+结果：
+found 0 vulnerabilities
+注意：
+npm install 曾提示 1 个低危 dev 依赖问题。
+生产依赖审计通过。
+11. 当前限制
+当前 Provider 切换只更新应用自己的 SQLite：
+provider_profiles.is_active
+还没有写入真实配置：
+~/.codex/config.toml
+~/.claude.json 或 Claude Code 相关配置
+原因：
+真实配置写入属于高风险操作。
+必须先实现自动备份。
+必须先实现 dry-run diff。
+必须避免写坏 Codex / Claude 配置。
+敏感内容不能明文展示或落日志。
+12. 下一步推荐任务
+下一步建议实现：
+12.1 配置发现
+读取并识别：
+%USERPROFILE%\.codex\config.toml
+%USERPROFILE%\.codex\auth.json
+%USERPROFILE%\.claude.json
+%APPDATA%\Claude
+要求：
+只读取路径和非敏感结构。
+不输出 token、Cookie、密钥。
+auth 文件只检测存在性和脱敏状态。
+12.2 自动备份
+新增备份服务：
+src-tauri/src/services/backup_service.rs
+目标：
+修改配置前自动备份。
+备份目录建议：
+%APPDATA%\codex-claude-workbench\backups
+备份文件名包含：app
+config name
+timestamp
+
+不备份到项目目录。
+不在前端展示敏感内容。
+12.3 dry-run diff
+新增 dry-run command：
+preview_provider_switch(profile_id)
+返回：
+将修改哪些文件
+修改哪些字段
+是否需要备份
+是否发现敏感字段，敏感值必须脱敏
+不实际写入
+12.4 真实切换
+只有在备份和 dry-run 完成后，再实现：
+apply_provider_switch(profile_id)
+要求：
+先备份。
+再写入。
+写入失败要回滚或至少保留备份。
+前端明确显示结果。
+12.5 Codex 会话解析
+后续可以实现：
+发现 Codex 会话目录。
+读取本地会话元数据。
+写入 codex_sessions。
+支持搜索。
+支持 Markdown 导出。
+删除前确认并备份/放入回收区。
+13. 重要风险
+不要直接把 Codex++ 注入逻辑写入主流程。
+不要让注入失败导致 Provider 管理不可用。
+不要明文展示/记录 token、Cookie、auth.json。
+不要直接覆盖用户现有配置。
+不要自动 commit、push。
+不要进行大范围格式化。
+当前项目还没有接入真实 Codex / Claude 配置写入。
+14. 推荐继续工作的首条指令
+请从当前项目继续实现：
+目标：
+先做配置发现 + 自动备份 + dry-run diff，不要直接写真实 Codex / Claude 配置。
+要求：
+读取项目 AGENTS.md、README 和当前代码。
+不读取或输出真实 token、Cookie、密钥。
+新增 Rust 配置发现服务。
+新增备份服务骨架。
+新增 preview_provider_switch command。
+前端展示 dry-run 结果。
+修改后运行 npm run build 和 cargo check。
+最后输出改动文件、验证结果、风险项。

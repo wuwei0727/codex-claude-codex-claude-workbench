@@ -1,0 +1,4 @@
+{"file":"AGENTS.md","reason":"Verify sensitive data and real-config write safety rules."}
+{"file":"docs/project-context-for-codex.md","reason":"Check alignment with project goals and cc-switch-inspired Provider behavior."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend quality check entry point."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Verify cross-layer consistency across Rust, SQLite, Tauri, and React."}

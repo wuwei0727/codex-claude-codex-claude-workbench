@@ -1,0 +1,4 @@
+{"file":"AGENTS.md","reason":"Project safety rules for Provider management and sensitive data handling."}
+{"file":"docs/project-context-for-codex.md","reason":"Project source, cc-switch reference direction, and Provider feature boundaries."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend implementation quality and checklist entry point."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Task spans Rust backend, SQLite, Tauri commands, and React UI."}
