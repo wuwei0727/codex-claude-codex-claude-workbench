@@ -71,6 +71,32 @@ pub struct ProviderMutationResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProviderSecretStatus {
+    secret_type: String,
+    label: String,
+    exists: bool,
+    updated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProviderSecretRequest {
+    profile_id: String,
+    secret_type: String,
+    secret_value: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderSecretMutationResult {
+    profile_id: String,
+    secret_type: String,
+    label: String,
+    exists: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewChange {
     target: String,
     path: String,
@@ -449,6 +475,94 @@ pub fn create_api_relay_provider(
     })
 }
 
+#[tauri::command]
+pub fn list_provider_backups() -> Result<Vec<backup_service::BackupEntry>, String> {
+    backup_service::list_backup_entries(&config_discovery::discover_configs())
+}
+
+#[tauri::command]
+pub fn restore_provider_backup(
+    backup_path: String,
+) -> Result<backup_service::BackupRestoreResult, String> {
+    backup_service::restore_backup(&config_discovery::discover_configs(), &backup_path)
+}
+
+#[tauri::command]
+pub fn list_provider_secret_status(
+    profile_id: String,
+) -> Result<Vec<ProviderSecretStatus>, String> {
+    let kind = load_provider_kind(&profile_id)?;
+    let conn = db::open_connection().map_err(|err| err.to_string())?;
+
+    supported_secret_types(&kind)
+        .into_iter()
+        .map(|(secret_type, label)| {
+            let updated_at = conn
+                .query_row(
+                    "SELECT updated_at FROM provider_secrets WHERE provider_id = ?1 AND secret_type = ?2",
+                    params![&profile_id, secret_type],
+                    |row| row.get::<_, String>(0),
+                )
+                .ok();
+
+            Ok(ProviderSecretStatus {
+                secret_type: secret_type.to_string(),
+                label: label.to_string(),
+                exists: updated_at.is_some(),
+                updated_at,
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn update_provider_secret(
+    request: UpdateProviderSecretRequest,
+) -> Result<ProviderSecretMutationResult, String> {
+    let kind = load_provider_kind(&request.profile_id)?;
+    let label = validate_secret_type_for_kind(&kind, &request.secret_type)?;
+    let secret_value = request.secret_value.trim();
+    if secret_value.is_empty() {
+        return Err("凭据内容不能为空".to_string());
+    }
+    validate_secret_payload(&request.secret_type, secret_value)?;
+
+    save_provider_secret(
+        &request.profile_id,
+        &request.secret_type,
+        secret_value.as_bytes(),
+    )?;
+
+    Ok(ProviderSecretMutationResult {
+        profile_id: request.profile_id,
+        secret_type: request.secret_type,
+        label: label.to_string(),
+        exists: true,
+    })
+}
+
+#[tauri::command]
+pub fn delete_provider_secret(
+    profile_id: String,
+    secret_type: String,
+) -> Result<ProviderSecretMutationResult, String> {
+    let kind = load_provider_kind(&profile_id)?;
+    let label = validate_secret_type_for_kind(&kind, &secret_type)?;
+    let conn = db::open_connection().map_err(|err| err.to_string())?;
+    conn.execute(
+        "DELETE FROM provider_secrets WHERE provider_id = ?1 AND secret_type = ?2",
+        params![&profile_id, &secret_type],
+    )
+    .map_err(|err| err.to_string())?;
+
+    Ok(ProviderSecretMutationResult {
+        profile_id,
+        secret_type,
+        label: label.to_string(),
+        exists: false,
+    })
+}
+
 fn preview_changes(
     provider: &live_config::ProviderLiveConfig,
     discovered_configs: &[config_discovery::ConfigDiscoveryItem],
@@ -615,6 +729,48 @@ fn load_provider_secret(provider_id: &str, secret_type: &str) -> Result<Vec<u8>,
         .map_err(|err| err.to_string())?;
 
     credential_service::unprotect(&encrypted_value)
+}
+
+fn load_provider_kind(profile_id: &str) -> Result<String, String> {
+    let conn = db::open_connection().map_err(|err| err.to_string())?;
+    conn.query_row(
+        "SELECT kind FROM provider_profiles WHERE id = ?1",
+        [profile_id],
+        |row| row.get::<_, String>(0),
+    )
+    .map_err(|err| err.to_string())
+}
+
+fn supported_secret_types(kind: &str) -> Vec<(&'static str, &'static str)> {
+    match kind {
+        "codex" => vec![
+            ("codex_config_toml", "Codex config.toml"),
+            ("codex_auth_json", "Codex auth.json"),
+        ],
+        "claude" => vec![("claude_config_json", "Claude .claude.json")],
+        _ => Vec::new(),
+    }
+}
+
+fn validate_secret_type_for_kind(kind: &str, secret_type: &str) -> Result<&'static str, String> {
+    supported_secret_types(kind)
+        .into_iter()
+        .find_map(|(candidate, label)| {
+            if candidate == secret_type {
+                Some(label)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| format!("该 Provider 不支持凭据类型: {secret_type}"))
+}
+
+fn validate_secret_payload(secret_type: &str, value: &str) -> Result<(), String> {
+    if secret_type.ends_with("_json") {
+        serde_json::from_str::<Value>(value).map_err(|err| format!("JSON 凭据格式无效: {err}"))?;
+    }
+
+    Ok(())
 }
 
 fn validate_kind(kind: &str) -> Result<String, String> {

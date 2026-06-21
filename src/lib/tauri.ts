@@ -92,6 +92,50 @@ export interface ProviderMutationResult {
   warnings: string[];
 }
 
+export interface ProviderBackupEntry {
+  backupPath: string;
+  targetId: string;
+  targetLabel: string;
+  sourcePath: string;
+  createdAt: string;
+  exists: boolean;
+  sizeBytes?: number;
+}
+
+export interface ProviderBackupRestoreResult {
+  targetId: string;
+  targetLabel: string;
+  restoredPath: string;
+  backupPath: string;
+  protectiveBackups: Array<{
+    label: string;
+    sourcePath: string;
+    backupPath: string;
+  }>;
+}
+
+export type ProviderSecretType = "codex_config_toml" | "codex_auth_json" | "claude_config_json";
+
+export interface ProviderSecretStatus {
+  secretType: ProviderSecretType;
+  label: string;
+  exists: boolean;
+  updatedAt?: string;
+}
+
+export interface UpdateProviderSecretRequest {
+  profileId: string;
+  secretType: ProviderSecretType;
+  secretValue: string;
+}
+
+export interface ProviderSecretMutationResult {
+  profileId: string;
+  secretType: ProviderSecretType;
+  label: string;
+  exists: boolean;
+}
+
 export interface CreateApiRelayProviderRequest {
   kind: ProviderKind;
   name: string;
@@ -200,6 +244,69 @@ export async function createApiRelayProvider(request: CreateApiRelayProviderRequ
   }
 
   return invoke<ProviderMutationResult>("create_api_relay_provider", { request });
+}
+
+export async function listProviderBackups() {
+  if (!hasTauriRuntime()) {
+    return [] satisfies ProviderBackupEntry[];
+  }
+
+  return invoke<ProviderBackupEntry[]>("list_provider_backups");
+}
+
+export async function restoreProviderBackup(backupPath: string) {
+  if (!hasTauriRuntime()) {
+    return {
+      targetId: "codex-config",
+      targetLabel: "Codex config.toml",
+      restoredPath: "%USERPROFILE%\\.codex\\config.toml",
+      backupPath,
+      protectiveBackups: [],
+    } satisfies ProviderBackupRestoreResult;
+  }
+
+  return invoke<ProviderBackupRestoreResult>("restore_provider_backup", { backupPath });
+}
+
+export async function listProviderSecretStatus(profileId: string) {
+  if (!hasTauriRuntime()) {
+    const isClaude = profileId.startsWith("claude");
+    return [
+      {
+        secretType: isClaude ? "claude_config_json" : "codex_config_toml",
+        label: isClaude ? "Claude .claude.json" : "Codex config.toml",
+        exists: false,
+      },
+    ] satisfies ProviderSecretStatus[];
+  }
+
+  return invoke<ProviderSecretStatus[]>("list_provider_secret_status", { profileId });
+}
+
+export async function updateProviderSecret(request: UpdateProviderSecretRequest) {
+  if (!hasTauriRuntime()) {
+    return {
+      profileId: request.profileId,
+      secretType: request.secretType,
+      label: request.secretType,
+      exists: true,
+    } satisfies ProviderSecretMutationResult;
+  }
+
+  return invoke<ProviderSecretMutationResult>("update_provider_secret", { request });
+}
+
+export async function deleteProviderSecret(profileId: string, secretType: ProviderSecretType) {
+  if (!hasTauriRuntime()) {
+    return {
+      profileId,
+      secretType,
+      label: secretType,
+      exists: false,
+    } satisfies ProviderSecretMutationResult;
+  }
+
+  return invoke<ProviderSecretMutationResult>("delete_provider_secret", { profileId, secretType });
 }
 
 export async function previewProviderSwitch(profileId: string) {

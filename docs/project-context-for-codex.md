@@ -171,65 +171,46 @@ D:\cusor-project\codex-claude-workbench
   - `codex-official`
   - `claude-official`
 - Provider 列表已从 SQLite 读取。
-- Provider 切换已写入 SQLite 状态。
+- Provider 切换已支持 dry-run 预览、自动备份、真实配置写入和 SQLite active 状态同步。
+- Codex Provider 已支持写入 `%USERPROFILE%\.codex\config.toml`，并可在托管密文存在时恢复 `%USERPROFILE%\.codex\auth.json`。
+- Claude Provider 已支持写入 `%USERPROFILE%\.claude.json`。
+- Provider 导入已支持读取 live 配置，敏感内容不明文写入普通 SQLite 字段。
+- Provider 凭据已使用 Windows DPAPI 加密后存入 `provider_secrets`。
+- Provider 备份已支持列表查看和从备份恢复；恢复前会先备份当前 live 文件。
+- Provider 凭据管理已支持状态查看、更新和删除托管密文。
 - Codex 会话列表已从 SQLite 表读取。
 - 浏览器预览环境使用 mock 数据。
 - Tauri 运行环境使用 Rust invoke。
 
 ## 7. 当前限制
 
-当前 Provider 切换只更新应用自己的 SQLite：
-
-```text
-provider_profiles.is_active
-```
-
-尚未写入真实配置：
-
-```text
-%USERPROFILE%\.codex\config.toml
-%USERPROFILE%\.codex\auth.json
-%USERPROFILE%\.claude.json
-%APPDATA%\Claude
-```
-
-原因：
-
-- 写真实配置属于高风险操作。
-- 必须先实现配置发现。
-- 必须先实现自动备份。
-- 必须先实现 dry-run diff。
-- 必须避免输出或记录真实 token、Cookie、密钥。
+- 未对用户真实 Codex / Claude 账号配置执行 live apply 手测；真实账号写入仍需用户单独确认。
+- 不做临时目录 E2E 测试。
+- 不做切换失败诊断面板。
+- 仍不支持恢复 `%APPDATA%\Claude` 整个应用数据目录；当前只处理文件型配置备份。
+- 已托管凭据不回显明文，只显示存在性、类型和更新时间。
+- Windows DPAPI 密文只保证当前 Windows 用户上下文可解密，换机器或换用户不可直接复用。
 
 ## 8. 下一步建议
 
 下一步优先做：
 
-1. 配置发现
-   - 检测 Codex / Claude 配置路径。
-   - 只读取非敏感结构。
-   - auth 文件只展示存在性和脱敏状态。
-
-2. 自动备份
-   - 修改配置前自动备份。
-   - 备份目录建议放在：
-     `%APPDATA%\codex-claude-workbench\backups`
-   - 不把备份放入项目目录。
-
-3. dry-run diff
-   - 新增 `preview_provider_switch(profile_id)`。
-   - 展示将修改哪些文件和字段。
-   - 敏感值必须脱敏。
-   - 不实际写入。
-
-4. 真实切换
-   - 等配置发现、备份、dry-run 都完成后，再实现 `apply_provider_switch(profile_id)`。
-   - 写入失败要保留备份，必要时支持回滚。
-
-5. Codex 会话解析
+1. Codex 会话解析
    - 发现本地 Codex 会话目录。
    - 建立会话索引。
    - 支持搜索、Markdown 导出、删除前确认。
+
+2. MCP / Skills / Prompts 管理
+   - 先做 Codex / Claude 配置发现和只读展示。
+   - 再实现带备份的写入。
+
+3. Windows 启动器和托盘
+   - 从工作台启动 Codex / Claude。
+   - 提供常用 Provider 快速切换入口。
+
+4. 打包体验
+   - 补齐 Windows NSIS / MSI 打包验证。
+   - 首次启动引导和数据目录打开能力。
 
 ## 9. 验证命令
 
@@ -261,4 +242,3 @@ npm run tauri:build
 - 不要把敏感配置明文写入 SQLite。
 - 不要把 Codex++ 注入做成主流程强依赖。
 - 不要做无关大范围格式化。
-

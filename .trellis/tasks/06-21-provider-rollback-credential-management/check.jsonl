@@ -1,0 +1,5 @@
+{"path":"src-tauri/src/services/backup_service.rs","reason":"Backup planning and execution implementation."}
+{"path":"src-tauri/src/commands/providers.rs","reason":"Provider Tauri command boundary and secret helpers."}
+{"path":"src-tauri/src/services/credential_service.rs","reason":"DPAPI secret protection."}
+{"path":"src/lib/tauri.ts","reason":"Frontend RPC contract."}
+{"path":"src/app/dashboard.tsx","reason":"Provider management UI surface."}

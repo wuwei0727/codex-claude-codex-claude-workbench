@@ -1,0 +1,33 @@
+{
+  "id": "provider-rollback-credential-management",
+  "name": "provider-rollback-credential-management",
+  "title": "Provider 回滚与凭据管理",
+  "description": "为 Provider 管理补齐备份列表、备份恢复、凭据状态展示、凭据更新与删除能力；不做切换失败诊断面板，不做临时目录 E2E，不碰真实账号 live apply 手测。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "ww",
+  "assignee": "ww",
+  "createdAt": "2026-06-21",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/commands/providers.rs",
+    "src-tauri/src/services/backup_service.rs",
+    "src-tauri/src/services/credential_service.rs",
+    "src/lib/tauri.ts",
+    "src/app/dashboard.tsx",
+    "docs/project-context-for-codex.md"
+  ],
+  "notes": "",
+  "meta": {}
+}

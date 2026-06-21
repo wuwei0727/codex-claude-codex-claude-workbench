@@ -13,11 +13,15 @@ import {
   KeyRound,
   LayoutDashboard,
   Play,
+  RefreshCw,
+  RotateCcw,
+  Save,
   Search,
   Settings,
   ShieldCheck,
   Sparkles,
   TerminalSquare,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,13 +30,23 @@ import { Input } from "@/components/ui/input";
 import {
   applyProviderSwitch,
   createApiRelayProvider,
+  deleteProviderSecret,
   getWorkbenchStatus,
   importLiveProvider,
   listCodexSessions,
+  listProviderBackups,
   listProviderProfiles,
+  listProviderSecretStatus,
   previewProviderSwitch,
+  restoreProviderBackup,
+  updateProviderSecret,
   type ProviderKind,
+  type ProviderBackupEntry,
+  type ProviderBackupRestoreResult,
   type ProviderMutationResult,
+  type ProviderProfile,
+  type ProviderSecretStatus,
+  type ProviderSecretType,
   type ProviderSwitchApplyResult,
   type ProviderSwitchPreview,
 } from "@/lib/tauri";
@@ -82,11 +96,19 @@ export function Dashboard() {
   const [relayApiKey, setRelayApiKey] = useState("");
   const statusQuery = useQuery({ queryKey: ["workbench-status"], queryFn: getWorkbenchStatus });
   const providersQuery = useQuery({ queryKey: ["provider-profiles"], queryFn: listProviderProfiles });
+  const backupsQuery = useQuery({ queryKey: ["provider-backups"], queryFn: listProviderBackups });
   const sessionsQuery = useQuery({ queryKey: ["codex-sessions"], queryFn: listCodexSessions });
   const previewSwitchMutation = useMutation({ mutationFn: previewProviderSwitch });
+  const restoreBackupMutation = useMutation({
+    mutationFn: restoreProviderBackup,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["provider-backups"] }),
+  });
   const importProviderMutation = useMutation({
     mutationFn: importLiveProvider,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["provider-profiles"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["provider-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["provider-secret-status"] });
+    },
   });
   const createRelayMutation = useMutation({
     mutationFn: createApiRelayProvider,
@@ -96,6 +118,7 @@ export function Dashboard() {
       setRelayModel("");
       setRelayApiKey("");
       queryClient.invalidateQueries({ queryKey: ["provider-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["provider-secret-status"] });
     },
   });
   const applySwitchMutation = useMutation({
@@ -291,11 +314,21 @@ export function Dashboard() {
                           {profile.isActive ? "已启用" : "应用切换"}
                         </Button>
                       </div>
+                      <ProviderSecretManager profile={profile} />
                     </div>
                   ))}
                 </div>
                 {previewSwitchMutation.data && <ProviderSwitchPreviewPanel preview={previewSwitchMutation.data} />}
                 {applySwitchMutation.data && <ProviderSwitchApplyPanel result={applySwitchMutation.data} />}
+                <ProviderBackupsPanel
+                  backups={backupsQuery.data ?? []}
+                  isLoading={backupsQuery.isLoading}
+                  restoreResult={restoreBackupMutation.data}
+                  isRestoring={restoreBackupMutation.isPending}
+                  error={restoreBackupMutation.error}
+                  onRestore={(backupPath) => restoreBackupMutation.mutate(backupPath)}
+                  onRefresh={() => backupsQuery.refetch()}
+                />
                 {previewSwitchMutation.isError && (
                   <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                     预览失败：{String(previewSwitchMutation.error)}
@@ -388,6 +421,212 @@ export function Dashboard() {
       </div>
     </div>
   );
+}
+
+function ProviderBackupsPanel({
+  backups,
+  isLoading,
+  restoreResult,
+  isRestoring,
+  error,
+  onRestore,
+  onRefresh,
+}: {
+  backups: ProviderBackupEntry[];
+  isLoading: boolean;
+  restoreResult?: ProviderBackupRestoreResult;
+  isRestoring: boolean;
+  error: unknown;
+  onRestore: (backupPath: string) => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border bg-background/65 p-4">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-sm text-muted-foreground">备份恢复</div>
+          <h3 className="font-semibold">Provider 配置备份</h3>
+        </div>
+        <Button variant="outline" size="sm" onClick={onRefresh}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          刷新
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        {isLoading && <div className="text-sm text-muted-foreground">正在读取备份列表...</div>}
+        {!isLoading && backups.length === 0 && (
+          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">暂无可恢复备份。</div>
+        )}
+        {backups.map((backup) => (
+          <div key={backup.backupPath} className="grid gap-3 rounded-xl border bg-card/70 p-3 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div className="min-w-0">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <span className="font-medium">{backup.targetLabel}</span>
+                <Badge variant={backup.exists ? "success" : "secondary"}>{backup.exists ? "可恢复" : "缺失"}</Badge>
+                <span className="text-xs text-muted-foreground">{backup.createdAt}</span>
+                {backup.sizeBytes != null && <span className="text-xs text-muted-foreground">{formatBytes(backup.sizeBytes)}</span>}
+              </div>
+              <code className="block truncate text-xs text-muted-foreground">{backup.backupPath}</code>
+              <code className="mt-1 block truncate text-xs text-muted-foreground">{backup.sourcePath}</code>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!backup.exists || isRestoring}
+              onClick={() => onRestore(backup.backupPath)}
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              恢复
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      {restoreResult && (
+        <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
+          <div className="font-medium">已恢复 {restoreResult.targetLabel}</div>
+          <code className="mt-1 block truncate text-xs text-muted-foreground">{restoreResult.restoredPath}</code>
+          {restoreResult.protectiveBackups.length > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              恢复前已备份当前文件：{restoreResult.protectiveBackups.map((item) => item.backupPath).join("；")}
+            </div>
+          )}
+        </div>
+      )}
+      {Boolean(error) && (
+        <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          恢复失败：{String(error)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProviderSecretManager({ profile }: { profile: ProviderProfile }) {
+  const queryClient = useQueryClient();
+  const [secretValues, setSecretValues] = useState<Partial<Record<ProviderSecretType, string>>>({});
+  const statusQuery = useQuery({
+    queryKey: ["provider-secret-status", profile.id],
+    queryFn: () => listProviderSecretStatus(profile.id),
+  });
+  const updateMutation = useMutation({
+    mutationFn: updateProviderSecret,
+    onSuccess: () => {
+      setSecretValues({});
+      queryClient.invalidateQueries({ queryKey: ["provider-secret-status", profile.id] });
+      queryClient.invalidateQueries({ queryKey: ["provider-profiles"] });
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: ({ secretType }: { secretType: ProviderSecretType }) => deleteProviderSecret(profile.id, secretType),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["provider-secret-status", profile.id] });
+      queryClient.invalidateQueries({ queryKey: ["provider-profiles"] });
+    },
+  });
+
+  const statuses = statusQuery.data ?? [];
+
+  return (
+    <div className="mt-4 rounded-xl border bg-card/70 p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-sm font-medium">托管凭据</div>
+        <Badge variant={statuses.some((item) => item.exists) ? "warning" : "secondary"}>
+          {statuses.some((item) => item.exists) ? "已托管" : "未托管"}
+        </Badge>
+      </div>
+
+      <div className="space-y-3">
+        {statusQuery.isLoading && <div className="text-xs text-muted-foreground">正在读取凭据状态...</div>}
+        {statuses.map((status) => (
+          <ProviderSecretRow
+            key={status.secretType}
+            status={status}
+            value={secretValues[status.secretType] ?? ""}
+            isSaving={updateMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+            onChange={(value) => setSecretValues((current) => ({ ...current, [status.secretType]: value }))}
+            onSave={() =>
+              updateMutation.mutate({
+                profileId: profile.id,
+                secretType: status.secretType,
+                secretValue: secretValues[status.secretType] ?? "",
+              })
+            }
+            onDelete={() => deleteMutation.mutate({ secretType: status.secretType })}
+          />
+        ))}
+      </div>
+
+      {updateMutation.isError && (
+        <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+          保存失败：{String(updateMutation.error)}
+        </div>
+      )}
+      {deleteMutation.isError && (
+        <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+          删除失败：{String(deleteMutation.error)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProviderSecretRow({
+  status,
+  value,
+  isSaving,
+  isDeleting,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  status: ProviderSecretStatus;
+  value: string;
+  isSaving: boolean;
+  isDeleting: boolean;
+  onChange: (value: string) => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="rounded-lg border bg-background/70 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-medium">{status.label}</div>
+          <div className="text-xs text-muted-foreground">{status.updatedAt ?? "未保存"}</div>
+        </div>
+        <Badge variant={status.exists ? "success" : "secondary"}>{status.exists ? "存在" : "缺失"}</Badge>
+      </div>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="粘贴新的配置或 auth JSON；保存后只加密托管，不会回显"
+        className="min-h-20 w-full resize-y rounded-md border bg-background px-3 py-2 text-xs outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <Button variant="outline" size="sm" disabled={!value.trim() || isSaving} onClick={onSave}>
+          <Save className="mr-2 h-4 w-4" />
+          保存
+        </Button>
+        <Button variant="outline" size="sm" disabled={!status.exists || isDeleting} onClick={onDelete}>
+          <Trash2 className="mr-2 h-4 w-4" />
+          删除
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function StatusCard({ title, value, hint, icon: Icon = CheckCircle2 }: { title: string; value: string; hint: string; icon?: typeof CheckCircle2 }) {

@@ -1,0 +1,5 @@
+{"path":"AGENTS.md","reason":"Project-specific safety and output rules."}
+{"path":"docs/project-context-for-codex.md","reason":"Provider context documentation that must be brought up to date."}
+{"path":".trellis/spec/frontend/index.md","reason":"Frontend guideline index for dashboard changes."}
+{"path":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"This task spans backend commands, services, frontend RPC types, and UI."}
+{"path":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse existing Provider backup and credential patterns instead of duplicating storage logic."}
